@@ -1,0 +1,10 @@
+.env
+*.duckdb
+*.duckdb.wal
+*.parquet
+models/
+blogmap/blogmap.json
+wordpress-export.xml
+*-substack-posts.csv
+*-substack-html/
+__pycache__/
