@@ -214,6 +214,113 @@ def make_frame(coords: pd.DataFrame, up_to_year: int, frame_path: Path):
     plt.close(fig)
 
 
+def make_static_summary(coords: pd.DataFrame, out_path: Path):
+    """Static chart with all years plotted and labeled on the triangle."""
+    plt.rcParams.update({
+        "figure.facecolor": BG_COLOR,
+        "axes.facecolor": BG_COLOR,
+        "font.family": "serif",
+        "font.size": 9,
+        "text.color": TEXT_COLOR,
+        "savefig.facecolor": BG_COLOR,
+    })
+
+    fig, ax = plt.subplots(figsize=(9, 9))
+    ax.set_xlim(-0.18, 1.18)
+    ax.set_ylim(-0.22, 1.08)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    draw_triangle(ax)
+
+    # Title and subtitle
+    fig.text(0.5, 0.96, "22 years of blogging, in three dimensions",
+             ha="center", fontsize=15, fontweight="bold", color=TEXT_COLOR,
+             transform=fig.transFigure)
+    fig.text(0.5, 0.93,
+             "Each dot is one year. 3,010 posts clustered by semantic embeddings into Personal, Analytical, and Lifestyle.",
+             ha="center", fontsize=8, color=GRAY, transform=fig.transFigure)
+
+    # Compute all coordinates
+    xs, ys, years_list = [], [], []
+    for _, row in coords.iterrows():
+        p = np.array([row["personal"], row["analytical"], row["lifestyle"]])
+        x, y = ternary_to_cartesian(p)
+        xs.append(x)
+        ys.append(y)
+        years_list.append(int(row["year"]))
+
+    # Trail line
+    for i in range(1, len(xs)):
+        progress = i / len(xs)
+        alpha = 0.2 + 0.6 * progress
+        lw = 0.8 + 1.2 * progress
+        ax.plot([xs[i-1], xs[i]], [ys[i-1], ys[i]],
+                color=TRAIL_COLOR, linewidth=lw, alpha=alpha, zorder=2)
+
+    # Dots sized by post count
+    sizes = coords["n_posts"].values
+    size_scaled = 30 + (sizes / sizes.max()) * 150
+
+    # Color gradient: early years lighter, recent darker
+    n = len(xs)
+    for i in range(n):
+        progress = i / (n - 1)
+        alpha = 0.35 + 0.65 * progress
+        ax.scatter(xs[i], ys[i], s=size_scaled[i], color=PRIMARY, alpha=alpha,
+                   edgecolors="white", linewidth=0.8, zorder=4)
+
+    # Label every year — offset to avoid overlaps
+    # Use a simple nudge strategy
+    for i in range(n):
+        year = years_list[i]
+        x, y = xs[i], ys[i]
+
+        # Default offset
+        ha, va = "left", "bottom"
+        dx, dy = 0.015, 0.015
+
+        # Nudge specific years to reduce overlap
+        if year in (2005, 2009, 2012):
+            ha, va, dx, dy = "right", "bottom", -0.015, 0.015
+        elif year in (2010, 2020):
+            ha, va, dx, dy = "left", "top", 0.015, -0.015
+        elif year in (2008, 2019):
+            ha, va, dx, dy = "right", "top", -0.015, -0.015
+        elif year in (2004,):
+            ha, va, dx, dy = "center", "bottom", 0, 0.02
+
+        fontsize = 8 if year % 5 == 0 or year == 2004 or year == 2026 else 6.5
+        weight = "bold" if year % 5 == 0 or year == 2004 or year == 2026 else "normal"
+
+        ax.text(x + dx, y + dy, str(year), ha=ha, va=va,
+                fontsize=fontsize, fontweight=weight, color=TEXT_COLOR, zorder=5)
+
+    # Annotations for key moments
+    annotations = [
+        (2004, "Started blogging\nat IIT Madras", "right", 0.06, 0.02),
+        (2013, "Mint columns,\npolicy writing", "left", -0.08, 0.03),
+        (2026, "Data science\ntakes over", "right", 0.04, 0.02),
+    ]
+    for year, text, ha_ann, offx, offy in annotations:
+        idx = years_list.index(year)
+        ax.annotate(
+            text, xy=(xs[idx], ys[idx]),
+            xytext=(xs[idx] + offx, ys[idx] + offy),
+            fontsize=7.5, color=PRIMARY, fontweight="bold", fontstyle="italic",
+            ha=ha_ann,
+            arrowprops=dict(arrowstyle="-", color=GRAY, linewidth=0.5),
+            zorder=6,
+        )
+
+    # Legend for dot size
+    fig.text(0.82, 0.08, "Dot size = posts that year", ha="center",
+             fontsize=7, color=GRAY, transform=fig.transFigure)
+
+    fig.savefig(out_path, dpi=200, bbox_inches="tight", pad_inches=0.3)
+    plt.close(fig)
+
+
 def main():
     """Generate the triangle GIF."""
     CHARTS_DIR.mkdir(exist_ok=True)
@@ -240,18 +347,18 @@ def main():
         print(f"  {year}")
 
     # Hold last frame longer
-    for _ in range(8):
+    for _ in range(20):
         frame_paths.append(frame_paths[-1])
 
     print("Assembling GIF...")
     frames = [imageio.imread(str(p)) for p in frame_paths]
     gif_path = CHARTS_DIR / "blog_triangle.gif"
-    imageio.mimsave(str(gif_path), frames, duration=0.6, loop=0)
+    imageio.mimsave(str(gif_path), frames, duration=1.2, loop=0)
     print(f"Saved: {gif_path}")
 
-    # Also save final static frame
+    # Static summary with all years labeled
     final_path = CHARTS_DIR / "blog_triangle_final.png"
-    make_frame(coords, years[-1], final_path)
+    make_static_summary(coords, final_path)
     print(f"Saved: {final_path}")
 
 
